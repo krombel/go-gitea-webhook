@@ -5,7 +5,10 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	b64 "encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -125,10 +128,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	//get the hook event from the headers
-	event := r.Header.Get("X-Gogs-Event")
-	if len(event) == 0 {
-		event = r.Header.Get("X-Gitea-Event")
-	}
+	event := r.Header.Get("X-Gitea-Event")
 
 	//only push events are current supported
 	if event != "push" {
@@ -136,8 +136,12 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	header_signature := r.Header.Get("X-Gitea-Signature")
+	headerMAC, err := hex.DecodeString(header_signature)
+	panicIf(err, "while decoding siguature")
+
 	//read request body
-	var data, err = ioutil.ReadAll(r.Body)
+	data, err := ioutil.ReadAll(r.Body)
 	panicIf(err, "while reading request body")
 
 	//unmarshal request body
@@ -153,7 +157,10 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		if repo.Name == hook.Repo.FullName || repo.Name == hook.Repo.HTMLURL {
 
 			//check if the secret in the configuration matches the request
-			if repo.Secret != hook.Secret {
+			mac := hmac.New(sha256.New, []byte(repo.Secret))
+			mac.Write(data)
+			expectedMAC := mac.Sum(nil)
+			if !hmac.Equal(headerMAC, expectedMAC) {
 				log.Printf("secret mismatch for repo %s\n", repo.Name)
 				continue
 			}
