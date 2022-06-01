@@ -19,9 +19,11 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	api "code.gitea.io/gitea/modules/structs"
+	git "github.com/go-git/go-git/v5"
 )
 
 //ConfigRepository represents a repository from the config file
@@ -167,13 +169,34 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 
 			//execute commands for repository
 			for _, cmd := range repo.Commands {
-				var command = exec.Command(cmd)
-				out, err := command.Output()
-				if err != nil {
-					log.Println(err)
+				if strings.HasPrefix(cmd, "git pull") {
+					_, cmd2, _ := strings.Cut(cmd, "git pull")
+					repo, err := git.PlainOpen(cmd2)
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+					wd, err := repo.Worktree()
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+					err = wd.Pull(&git.PullOptions{})
+					if err != nil {
+						log.Println(err)
+					} else {
+						log.Println("git pull successfully")
+					}
+
 				} else {
-					log.Println("Executed: " + cmd)
-					log.Println("Output: " + string(out))
+					var command = exec.Command(cmd)
+					out, err := command.Output()
+					if err != nil {
+						log.Println(err)
+					} else {
+						log.Println("Executed: " + cmd)
+						log.Println("Output: " + string(out))
+					}
 				}
 			}
 		}
