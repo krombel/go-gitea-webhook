@@ -23,7 +23,8 @@ import (
 	"syscall"
 
 	api "code.gitea.io/gitea/modules/structs"
-	git "github.com/go-git/go-git/v5"
+	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
 //ConfigRepository represents a repository from the config file
@@ -170,7 +171,14 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 			//execute commands for repository
 			for _, cmd := range repo.Commands {
 				if strings.HasPrefix(cmd, "git pull") {
-					_, cmd2, _ := strings.Cut(cmd, "git pull")
+					_, cmd2, _ := strings.Cut(cmd, "git pull ")
+
+					agent, _ := ssh.NewSSHAgentAuth("webhook")
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+
 					repo, err := git.PlainOpen(cmd2)
 					if err != nil {
 						log.Println(err)
@@ -181,7 +189,9 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 						log.Println(err)
 						continue
 					}
-					err = wd.Pull(&git.PullOptions{})
+					err = wd.Pull(&git.PullOptions{
+						Auth: agent,
+					})
 					if err != nil {
 						log.Println(err)
 					} else {
